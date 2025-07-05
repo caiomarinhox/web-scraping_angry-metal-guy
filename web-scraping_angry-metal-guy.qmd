@@ -1,0 +1,237 @@
+---
+title: "Web scraping Angry Metal guy reviews"
+execute: 
+  eval: false
+author: "cmrx"
+format: html
+editor: visual
+---
+
+# Introduction
+
+The main goal here is to learn how to do web scraping. I've also wanted to work with list-columns, so there'll be some of that as well.
+
+This is my first time doing web scraping it for real: I've chosen the [Angry Metal Guy](https://www.angrymetalguy.com/) website beacuse I'm a fan and because smarter people may use the dataset for some text analysis. The script its supposed to scrape every review on the site.
+
+```{r}
+#| message: false
+
+library(here)
+library(polite)
+library(rvest)
+library(tidyverse)
+
+# Get custom scraping and cleaning functions
+source(here("R", "scrape_review_links.R"))
+source(here("R", "clean_review_page.R"))
+source(here("R", "functions.R"))
+```
+
+# Scraping review *links*
+
+I couldn't find a single list of every review on the site, so, first, we have to create this list. For this, I scraped every link on every page (\~800 pages). Not every link is a review, but we'll deal with that later.
+
+```{r}
+# Scrape review links
+review_links <- scrape_review_links()
+
+# It takes a long time to scrape all these links
+# So let's save them
+
+review_links %>% 
+  write_rds(here("data", "review_links.rds"))
+```
+
+# Scraping review *pages*
+
+Scraping every link takes a long time – if you're doing it with the {polite} package.
+
+```{r}
+# To be used interactively
+review_links <- here("data", "review_links.rds") %>%
+  read_rds()
+```
+
+I let the script running thru the night and got back \~8,000 links. Now it's time to scrape each page. However! I did this a bunch of times and discovered that the best way is scrape thousand of pages is to do it in groups. In this case, groups of thousands.
+
+Having done all that, I saved each `review_page` table as and .rds file with `write_rds`. Big mistake!
+
+It turns out [R stores xml in the memory with external pointers](https://stackoverflow.com/questions/56261745/r-rvest-error-error-in-doc-namespacesdoc-external-pointer-is-not-valid). These external pointers are not stored in .rds files. So once you save the project and reopen it you will get the error `external pointer is not valid`.
+
+So I had to scrape the website once again!
+
+```{r}
+# DRY: declaring a simple convenience function, because we'll do this eight times.
+mutate_scrape <- function(review_links) {
+  review_links %>% 
+    mutate(review_raw = map2(
+    .x = review_link,
+    .y = msg,
+    .f = scrape_page
+  ))
+}
+```
+
+```{r}
+# Scrape each review page
+# Too long to scrape all at once: let's divide in groups of 1000
+review_pages_1000 <- review_links %>%
+  filter(n_current <= 2000) %>%
+  mutate_scrape()
+
+review_pages_1000 %>% 
+  clean_review_page() %>% 
+  write_rds(here("data", "reviews_1000.rds"))
+```
+
+```{r}
+review_pages_2000 <- review_links %>%
+  filter(n_current > 2000 & n_current <= 3000) %>% 
+  mutate_scrape()
+
+review_pages_2000 %>% 
+  clean_review_page() %>% 
+  write_rds(here("data", "reviews_2000.rds"))
+```
+
+```{r}
+review_pages_3000 <- review_links %>%
+  filter(n_current > 3000 & n_current <= 4000) %>% 
+  mutate_scrape()
+
+review_pages_3000 %>% 
+  clean_review_page() %>% 
+  write_rds(here("data", "reviews_3000.rds"))
+```
+
+```{r}
+review_pages_4000 <- review_links %>%
+  filter(n_current > 4000 & n_current <= 5000) %>% 
+  mutate_scrape()
+
+# posts 4165 and 4900 removed
+# "for promoting the music of a known nazi or
+# nazi adjacent band or musician."
+# Good for you, AMG!
+
+# post 4716 is not a review: it's a post about a podcast
+review_pages_4000 %>% 
+  filter(!n_current %in% c(4165, 4716, 4900)) %>% 
+  clean_review_page() %>% 
+  write_rds(here("data", "reviews_4000.rds"))
+```
+
+```{r}
+review_pages_5000 <- review_links %>%
+  filter(n_current > 5000 & n_current <= 6000) %>% 
+  mutate_scrape()
+
+# post 5199: not a review (things you might've missed)
+# post 5163, 5283: not a review ('yer metal is olde' kind of post)
+# posts removed: 5627, 5653, 5796, 5910, 5362 (nazi or nazi adjacent)
+review_pages_5000 %>%
+  filter(!n_current %in% c(5163, 5199, 5627, 5653, 5796, 5910, 5283, 5362)) %>% 
+  clean_review_page() %>% 
+  write_rds(here("data", "reviews_5000.rds"))
+```
+
+```{r}
+review_pages_6000 <- review_links %>%
+  filter(n_current > 6000 & n_current <= 7000) %>% 
+  mutate_scrape()
+
+# posts removed: 6134 (nazi or nazi adjacent)
+review_pages_6000 %>% 
+  filter(!n_current %in% c(6134)) %>% 
+  clean_review_page() %>% 
+  write_rds(here("data", "reviews_6000.rds"))
+```
+
+```{r}
+review_pages_7000 <- review_links %>%
+  filter(n_current > 7000 & n_current <= 8000) %>% 
+  mutate_scrape()
+
+# removed post 7286: link to a tweet about liveblogging Eurovison 2014 (?!)
+# post 7710: not a review (an essay on negative reviews)
+# post 7944: not a review (record of the month-style post)
+# posts removed: 7450, 7701, 7714, 7949, 7970 (nazi or nazi adjacent)
+review_pages_7000 %>% 
+  filter(!n_current %in% c(7286, 7450, 7701, 7710, 7714, 7944, 7949, 7970)) %>% 
+  clean_review_page() %>% 
+  write_rds(here("data", "reviews_7000.rds"))
+```
+
+```{r}
+review_pages_8000 <- review_links %>%
+  filter(n_current > 8000) %>% 
+  mutate_scrape()
+
+# posts removed: 8052, 8384 (nazi or nazi adjacent)
+review_pages_8000 %>% 
+  filter(!n_current %in% c(8052, 8384)) %>% 
+  clean_review_page() %>% 
+  write_rds(here("data", "reviews_8000.rds"))
+```
+
+# Cleaning the data
+
+It took me days to figure out that these scraping functions (`html_elements()` et al.) are NOT vectorized: I kept getting errors while trying, for instance, `mutate(review_links, review_title = html_elements(h1))` during EDA. Finally, I found [this R-bloggers post](https://www.r-bloggers.com/2018/09/using-purrrs-map-family-functions-in-dplyrmutate/). Which led me to [this AMAZING teaching repo](https://github.com/jennybc/row-oriented-workflows) by Jenny Bryan.
+
+The solution is simple: you just call the un-vectorized function inside a `map()` call.
+
+```{r}
+reviews <- review_pages %>%
+  mutate(review_metadata = map(review_raw, get_review_metadata)) %>% # list-columns are fun!
+  unnest(review_metadata) %>% 
+  filter(str_detect(review_metadata, "Rating: ")) %>% # gets only reviews containing a rating
+  mutate(
+    review_title = map(review_raw, get_review_title),
+    review_author = map(review_raw, get_review_author),
+    review_date = map(review_raw, get_review_date),
+    review_text = map(review_raw, get_review_text),
+    review_tags = map(review_raw, get_review_tags) # list-columns are fun!
+  ) %>%
+  unnest(cols = c(review_text, review_author)) %>%
+  extract_review_metadata() %>%
+  mutate(review_link = str_c("https://www.angrymetalguy.com/", review_link)) %>%
+  mutate(
+    metadata_length = NULL,
+    value = NULL,
+    nod = NULL,
+    page = NULL,
+    n_total = NULL,
+    n_current = NULL,
+    msg = NULL
+  ) %>%
+  relocate(review_link, .after = release_date)
+
+# Saving the data
+reviews %>%
+  write_rds(here("data", "reviews.rds"))
+```
+
+Finally! Now the scraping is done and we can go to bind all this data in a single table for some EDA.
+
+```{r}
+review_paths <- list.files(here("data"), full.names = TRUE) %>% 
+  as_tibble() %>% 
+  filter(str_detect(value, pattern = "reviews_\\d\\d\\d\\d")) %>% 
+  pull(value)
+
+# Get all reviews in a single table
+reviews <- map(review_paths, read_rds) %>% 
+  bind_rows()
+
+reviews %>% 
+  select(-review_raw) %>% 
+  write_rds(here("data", "reviews.rds"))
+```
+
+# Lessons learned
+
+1.  **Scraping *is time consuming***: many hours, even days. Especially if you're using the {polite} package.
+2.  **Scraping *is messy***: not all pages on the same tag (like"review") have the same html elements or even follow the same structure. Even pages that *are*, in facts, reviews, might have some anomaly.
+3.  **I don't think you're saving what you think you're saving**. R doesn't store xml information in .rds files. Check if your file format saves the data you need.
+4.  **Vectorize all the things with `map()`**. If you're working with `mutate()`, you need to call non-vectorized functions inside a `map()` call for it to work on every row. Otherwise, you'll get an error.
+5.  **How to use `slice()` and `between()`**. You can filter by row index with `slice(df, 300)` to get the 300th row of a data frame (or by an interval with `slice(df, 300:310)`). If you want to filter by a numeric column, use `between()` inside `filter()`, as in `filter(df, between(row_number, 1, 10))` to get lines 1 thru 10 of a numeric column. Handy for interactive error checking.

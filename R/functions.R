@@ -1,10 +1,11 @@
-scrape_page <- function(.x) {
+scrape_page <- function(.x, .y, n = 10) {
   # For interactive use: to show which page is being scraped
-  message(.x)
+  message(.y)
   
-  session %>%
-    nod(path = .x) %>%
-    scrape()
+  url <- "https://www.angrymetalguy.com/"
+  
+  paste0(url, .x) %>%
+    read_html()
 }
 
 get_review_pages <- function(session, n_pages = NULL) {
@@ -79,11 +80,30 @@ get_review_tags <- function(scraped_page) {
 get_review_metadata <- function(scraped_page) {
   # There are a number of data grouped in a single p html element (e.g. Rating, DR, Label).
   # I opted to get them all at once with this function, them extract each one via a mutate() call
-  scraped_page %>%
+  metadata_df <- scraped_page %>%
     html_elements("p") %>%
-    html_attrs_dfr() %>%
-    filter(str_detect(style, "center")) %>%
-    pull(.text)
+    html_attrs_dfr()
+    
+  # Check if a column named 'style' exists
+  # If it doesn't, use a column named 'align'
+  if ("style" %in% names(metadata_df)) {
+    metadata_df %>% 
+      filter(str_detect(style, "center")) %>%
+      pull(.text)
+  } else {
+    metadata_df %>% 
+      filter(str_detect(align, "center")) %>%
+      pull(.text)
+  }
+}
+
+get_review_date <- function(scraped_page) {
+  scraped_page %>%
+    html_elements(".entry-meta") %>%
+    html_attrs_dfr() %>% 
+    pull(.text) %>% 
+    str_extract("[A-Za-z]+ \\d{1,2}, \\d{4}") %>% 
+    parse_date_time("mdy")
 }
 
 #' This pipeline section could've been left in the cleaning section as-is.
